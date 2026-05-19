@@ -1,0 +1,20 @@
+import os
+from dataclasses import dataclass, field
+from typing import List
+
+
+@dataclass(frozen=True)
+class Settings:
+    db_path: str = os.getenv("DB_PATH", "smart_home.db")
+    mqtt_host: str = os.getenv("MQTT_HOST", "localhost")
+    mqtt_port: int = int(os.getenv("MQTT_PORT", "1883"))
+    mqtt_username: str = os.getenv("MQTT_USERNAME", "")
+    mqtt_password: str = os.getenv("MQTT_PASSWORD", "")
+    mqtt_topic_telemetry: str = os.getenv("MQTT_TOPIC_TELEMETRY", "devices/+/telemetry")
+    mqtt_topic_control_events: str = os.getenv("MQTT_TOPIC_CONTROL_EVENTS", "devices/+/control-events")
+    mqtt_topic_device_twin: str = os.getenv("MQTT_TOPIC_DEVICE_TWIN", "devices/+/devicetwin")
+    resample_intervals: List[int] = field(default_factory=lambda: [30, 60])
+    resample_loop_period_seconds: int = int(os.getenv("RESAMPLE_LOOP_PERIOD_SECONDS", "20"))
+
+
+settings = Settings()
