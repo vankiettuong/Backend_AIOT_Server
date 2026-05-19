@@ -48,3 +48,35 @@ uvicorn run:app --host 0.0.0.0 --port 8000 --reload
 - `devices/<device_id>/telemetry`
 - `devices/<device_id>/control-events`
 - `devices/<device_id>/devicetwin`
+
+
+## ML recommendation flow
+
+- ML service posts recommendation to `POST /ml/recommendations`
+- Backend stores it in `ml_recommendations`
+- Backend publishes MQTT to topic template: `devices/{device_id}/ml-setpoint`
+
+Example ESP32 subscribe topic:
+
+```
+devices/esp32-room-a/ml-setpoint
+```
+
+Example payload:
+
+```json
+{
+  "device_id": "esp32-room-a",
+  "ts": "2026-05-19T10:20:00Z",
+  "setpoint_dynamic": 29.2,
+  "control_hint": "cool_more",
+  "forecast": {
+    "temp_plus_10m": 29.6,
+    "hum_plus_10m": 68.1,
+    "temp_plus_20m": 29.8,
+    "hum_plus_20m": 69.0
+  },
+  "model_version": "rf_v1",
+  "source_service": "ml_service"
+}
+```

@@ -7,6 +7,7 @@ from app.core.helpers import majority, maybe_float, maybe_int
 from app.core.time_utils import cyclic_hour_features, floor_time, parse_ts, utc_now
 from app.schemas.control_event import ControlEventIn
 from app.schemas.device_twin import DeviceTwinIn
+from app.schemas.ml_recommendation import MLRecommendationIn
 from app.schemas.telemetry import TelemetryIn
 
 
@@ -68,6 +69,24 @@ class Database:
                     mode_actual TEXT,
                     setpoint_actual REAL
                 );
+
+                CREATE TABLE IF NOT EXISTS ml_recommendations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    device_id TEXT NOT NULL,
+                    ts TEXT NOT NULL,
+                    setpoint_dynamic REAL,
+                    pred_temp_plus_10m REAL,
+                    pred_hum_plus_10m REAL,
+                    pred_temp_plus_20m REAL,
+                    pred_hum_plus_20m REAL,
+                    control_hint TEXT,
+                    model_version TEXT,
+                    source_service TEXT,
+                    published_topic TEXT,
+                    publish_success INTEGER DEFAULT 0
+                );
+                CREATE INDEX IF NOT EXISTS idx_ml_recommendations_device_ts
+                    ON ml_recommendations(device_id, ts);
 
                 CREATE TABLE IF NOT EXISTS telemetry_resampled (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,6 +193,55 @@ class Database:
             )
             conn.commit()
 
+    def insert_ml_recommendation(
+        self,
+        item: MLRecommendationIn,
+        published_topic: Optional[str] = None,
+        publish_success: bool = False,
+    ) -> int:
+        ts = parse_ts(item.ts).isoformat()
+        with self._lock, self._connect() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO ml_recommendations (
+                    device_id, ts, setpoint_dynamic,
+                    pred_temp_plus_10m, pred_hum_plus_10m,
+                    pred_temp_plus_20m, pred_hum_plus_20m,
+                    control_hint, model_version, source_service,
+                    published_topic, publish_success
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    item.device_id,
+                    ts,
+                    item.setpoint_dynamic,
+                    item.pred_temp_plus_10m,
+                    item.pred_hum_plus_10m,
+                    item.pred_temp_plus_20m,
+                    item.pred_hum_plus_20m,
+                    item.control_hint,
+                    item.model_version,
+                    item.source_service,
+                    published_topic,
+                    1 if publish_success else 0,
+                ),
+            )
+            conn.commit()
+            return int(cursor.lastrowid)
+
+    def latest_ml_recommendation(self, device_id: str) -> Optional[Dict[str, Any]]:
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM ml_recommendations
+                WHERE device_id = ?
+                ORDER BY ts DESC, id DESC
+                LIMIT 1
+                """,
+                (device_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
     def latest_telemetry(self, device_id: str) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
             row = conn.execute(
@@ -196,6 +264,8 @@ class Database:
                 SELECT DISTINCT device_id FROM control_events
                 UNION
                 SELECT DISTINCT device_id FROM device_twin
+                UNION
+                SELECT DISTINCT device_id FROM ml_recommendations
                 ORDER BY device_id
                 """
             ).fetchall()

@@ -13,6 +13,7 @@ class Settings:
     mqtt_topic_telemetry: str = os.getenv("MQTT_TOPIC_TELEMETRY", "devices/+/telemetry")
     mqtt_topic_control_events: str = os.getenv("MQTT_TOPIC_CONTROL_EVENTS", "devices/+/control-events")
     mqtt_topic_device_twin: str = os.getenv("MQTT_TOPIC_DEVICE_TWIN", "devices/+/devicetwin")
+    mqtt_topic_ml_setpoint_template: str = os.getenv("MQTT_TOPIC_ML_SETPOINT_TEMPLATE", "devices/{device_id}/ml-setpoint")
     resample_intervals: List[int] = field(default_factory=lambda: [30, 60])
     resample_loop_period_seconds: int = int(os.getenv("RESAMPLE_LOOP_PERIOD_SECONDS", "20"))
 

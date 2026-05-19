@@ -41,3 +41,12 @@ def device_summary(device_id: str) -> Dict[str, Any]:
         "forecast_samples": len(forecast_rows),
         "habit_samples": len(habit_rows),
     }
+
+
+
+@router.get("/{device_id}/ml-recommendation/latest")
+def latest_ml_recommendation(device_id: str) -> Dict[str, Any]:
+    row = db.latest_ml_recommendation(device_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="No ML recommendation for device")
+    return row
