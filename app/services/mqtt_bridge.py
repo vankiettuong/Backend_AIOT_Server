@@ -27,6 +27,9 @@ class MQTTBridge:
         self.client = mqtt.Client()
         if settings.mqtt_username:
             self.client.username_pw_set(settings.mqtt_username, settings.mqtt_password)
+            
+        if settings.mqtt_port == 8883:
+            self.client.tls_set()
 
         self.client.on_connect = self._on_connect
         self.client.on_message = self._on_message
@@ -73,19 +76,18 @@ class MQTTBridge:
                 return False
         return True
 
+    def publish_json(self, topic: str, payload: dict, qos: int = 1, retain: bool = False) -> bool:
+        if self.client is None:
+            print(f"[MQTT] Publish skipped because client is not ready. topic={topic}")
+            return False
+        try:
+            message = json.dumps(payload, ensure_ascii=False)
+            result = self.client.publish(topic, message, qos=qos, retain=retain)
+            return result.rc == 0
+        except Exception as exc:
+            print(f"[MQTT] Publish failed topic={topic}: {exc}")
+            return False
 
-def publish_json(self, topic: str, payload: dict, qos: int = 1, retain: bool = False) -> bool:
-    if self.client is None:
-        print(f"[MQTT] Publish skipped because client is not ready. topic={topic}")
-        return False
-    try:
-        message = json.dumps(payload, ensure_ascii=False)
-        result = self.client.publish(topic, message, qos=qos, retain=retain)
-        return result.rc == 0
-    except Exception as exc:
-        print(f"[MQTT] Publish failed topic={topic}: {exc}")
-        return False
-
-def publish_ml_setpoint(self, device_id: str, payload: dict, qos: int = 1, retain: bool = False) -> bool:
-    topic = settings.mqtt_topic_ml_setpoint_template.format(device_id=device_id)
-    return self.publish_json(topic=topic, payload=payload, qos=qos, retain=retain)
+    def publish_ml_setpoint(self, device_id: str, payload: dict, qos: int = 1, retain: bool = False) -> bool:
+        topic = settings.mqtt_topic_ml_setpoint_template.format(device_id=device_id)
+        return self.publish_json(topic=topic, payload=payload, qos=qos, retain=retain)
