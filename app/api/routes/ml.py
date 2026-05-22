@@ -24,6 +24,7 @@ def create_ml_recommendation(item: MLRecommendationIn) -> Dict[str, Any]:
     topic = settings.mqtt_topic_ml_setpoint_template.format(device_id=item.device_id)
     payload = {
         "device_id": item.device_id,
+        "user_id": item.user_id,
         "ts": item.ts,
         "setpoint_dynamic": item.setpoint_dynamic,
         "control_hint": item.control_hint,

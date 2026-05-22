@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 import math
 
@@ -24,7 +24,22 @@ def floor_time(dt: datetime, interval_seconds: int) -> datetime:
     return datetime.fromtimestamp(floored, tz=UTC)
 
 
-def cyclic_hour_features(dt: datetime) -> Tuple[float, float]:
-    hour = dt.hour + dt.minute / 60.0
+def feature_local_time(dt: datetime, utc_offset_hours: float = 0.0) -> datetime:
+    return dt.astimezone(UTC) + timedelta(hours=utc_offset_hours)
+
+
+def cyclic_hour_features(dt: datetime, utc_offset_hours: float = 0.0) -> Tuple[float, float]:
+    local_dt = feature_local_time(dt, utc_offset_hours)
+    hour = local_dt.hour + local_dt.minute / 60.0
     angle = 2.0 * math.pi * (hour / 24.0)
     return math.sin(angle), math.cos(angle)
+
+
+def day_period(
+    dt: datetime,
+    utc_offset_hours: float = 0.0,
+    day_start_hour: int = 6,
+    night_start_hour: int = 18,
+) -> str:
+    local_hour = feature_local_time(dt, utc_offset_hours).hour
+    return "day" if day_start_hour <= local_hour < night_start_hour else "night"

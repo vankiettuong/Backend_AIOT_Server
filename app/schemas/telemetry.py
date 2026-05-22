@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 class TelemetryIn(BaseModel):
     device_id: str = Field(..., examples=["esp32-room-a"])
+    user_id: Optional[str] = Field(default=None, examples=["user-a"])
     ts: Optional[str] = None
     temp_raw: Optional[float] = None
     hum_raw: Optional[float] = None

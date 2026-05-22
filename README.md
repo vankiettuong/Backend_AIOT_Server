@@ -49,6 +49,19 @@ uvicorn run:app --host 0.0.0.0 --port 8000 --reload
 - `devices/<device_id>/control-events`
 - `devices/<device_id>/devicetwin`
 
+Telemetry and app control events may include `user_id`. The setpoint dataset
+uses `user_id` to personalize recommendations; missing IDs fall back to
+`DEFAULT_USER_ID=anonymous`.
+
+Time-of-day training features use UTC timestamps with:
+
+- `FEATURE_UTC_OFFSET_HOURS=0`
+- `DAY_START_HOUR=6`
+- `NIGHT_START_HOUR=18`
+
+Set `FEATURE_UTC_OFFSET_HOURS` to the deployment offset in both backend and ML
+so `hour_sin`, `hour_cos`, and `day_period` match local day/night behavior.
+
 
 ## ML recommendation flow
 

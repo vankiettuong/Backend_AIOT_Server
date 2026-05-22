@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 class ControlEventIn(BaseModel):
     device_id: str
+    user_id: Optional[str] = Field(default=None, examples=["user-a"])
     ts: Optional[str] = None
     event_type: str = Field(..., examples=["manual_override", "mode_change", "setpoint_change"])
     old_value: Optional[str] = None

@@ -3,8 +3,9 @@ import threading
 from datetime import timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
+from app.core.config import settings
 from app.core.helpers import majority, maybe_float, maybe_int
-from app.core.time_utils import cyclic_hour_features, floor_time, parse_ts, utc_now
+from app.core.time_utils import cyclic_hour_features, day_period, floor_time, parse_ts, utc_now
 from app.schemas.control_event import ControlEventIn
 from app.schemas.device_twin import DeviceTwinIn
 from app.schemas.ml_recommendation import MLRecommendationIn
@@ -31,6 +32,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS telemetry_raw (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     device_id TEXT NOT NULL,
+                    user_id TEXT,
                     ts TEXT NOT NULL,
                     temp_raw REAL,
                     hum_raw REAL,
@@ -51,6 +53,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS control_events (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     device_id TEXT NOT NULL,
+                    user_id TEXT,
                     ts TEXT NOT NULL,
                     event_type TEXT NOT NULL,
                     old_value TEXT,
@@ -73,6 +76,7 @@ class Database:
                 CREATE TABLE IF NOT EXISTS ml_recommendations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     device_id TEXT NOT NULL,
+                    user_id TEXT,
                     ts TEXT NOT NULL,
                     setpoint_dynamic REAL,
                     pred_temp_plus_10m REAL,
@@ -112,7 +116,16 @@ class Database:
                     ON telemetry_resampled(device_id, interval_seconds, bucket_start);
                 """
             )
+            self._ensure_column(conn, "telemetry_raw", "user_id", "TEXT")
+            self._ensure_column(conn, "control_events", "user_id", "TEXT")
+            self._ensure_column(conn, "ml_recommendations", "user_id", "TEXT")
             conn.commit()
+
+    @staticmethod
+    def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, ddl: str) -> None:
+        columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table_name})")}
+        if column_name not in columns:
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl}")
 
     def insert_telemetry(self, item: TelemetryIn) -> None:
         ts = parse_ts(item.ts).isoformat()
@@ -120,13 +133,14 @@ class Database:
             conn.execute(
                 """
                 INSERT INTO telemetry_raw (
-                    device_id, ts, temp_raw, hum_raw, temp_ma, hum_ma,
+                    device_id, user_id, ts, temp_raw, hum_raw, temp_ma, hum_ma,
                     mode, setpoint_current, fan_pwm_cmd, fan_pwm_actual,
                     lamp_cmd, lamp_actual, control_source, event_flag
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item.device_id,
+                    item.user_id,
                     ts,
                     item.temp_raw,
                     item.hum_raw,
@@ -150,12 +164,13 @@ class Database:
             conn.execute(
                 """
                 INSERT INTO control_events (
-                    device_id, ts, event_type, old_value, new_value,
+                    device_id, user_id, ts, event_type, old_value, new_value,
                     trigger_source, user_feedback
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item.device_id,
+                    item.user_id,
                     ts,
                     item.event_type,
                     item.old_value,
@@ -204,15 +219,16 @@ class Database:
             cursor = conn.execute(
                 """
                 INSERT INTO ml_recommendations (
-                    device_id, ts, setpoint_dynamic,
+                    device_id, user_id, ts, setpoint_dynamic,
                     pred_temp_plus_10m, pred_hum_plus_10m,
                     pred_temp_plus_20m, pred_hum_plus_20m,
                     control_hint, model_version, source_service,
                     published_topic, publish_success
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item.device_id,
+                    item.user_id,
                     ts,
                     item.setpoint_dynamic,
                     item.pred_temp_plus_10m,
@@ -385,7 +401,10 @@ class Database:
         for idx in range(lookback - 1, len(rows) - max_h):
             current = rows[idx]
             current_dt = parse_ts(current["bucket_start"])
-            hour_sin, hour_cos = cyclic_hour_features(current_dt)
+            hour_sin, hour_cos = cyclic_hour_features(
+                current_dt,
+                settings.feature_utc_offset_hours,
+            )
             sample: Dict[str, Any] = {
                 "device_id": device_id,
                 "bucket_start": current["bucket_start"],
@@ -398,6 +417,12 @@ class Database:
                 "setpoint_now": current["setpoint_mean"],
                 "hour_sin": hour_sin,
                 "hour_cos": hour_cos,
+                "day_period": day_period(
+                    current_dt,
+                    settings.feature_utc_offset_hours,
+                    settings.day_start_hour,
+                    settings.night_start_hour,
+                ),
             }
             for lag in range(lookback):
                 source = rows[idx - lag]
@@ -453,10 +478,14 @@ class Database:
             if not temp_before:
                 continue
 
-            hour_sin, hour_cos = cyclic_hour_features(event_dt)
+            hour_sin, hour_cos = cyclic_hour_features(
+                event_dt,
+                settings.feature_utc_offset_hours,
+            )
             label = self._infer_habit_label(event)
             sample = {
                 "device_id": device_id,
+                "user_id": event["user_id"] or settings.default_user_id,
                 "event_id": event["id"],
                 "event_ts": event["ts"],
                 "event_type": event["event_type"],
@@ -473,6 +502,12 @@ class Database:
                 "mode_majority_before": majority([r["mode_majority"] for r in before if r["mode_majority"]]),
                 "hour_sin": hour_sin,
                 "hour_cos": hour_cos,
+                "day_period": day_period(
+                    event_dt,
+                    settings.feature_utc_offset_hours,
+                    settings.day_start_hour,
+                    settings.night_start_hour,
+                ),
             }
             if after:
                 temp_after = [r["temp_mean"] for r in after if r["temp_mean"] is not None]

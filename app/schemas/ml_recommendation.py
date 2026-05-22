@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 class MLRecommendationIn(BaseModel):
     device_id: str
+    user_id: Optional[str] = None
     ts: Optional[str] = None
     setpoint_dynamic: Optional[float] = None
     pred_temp_plus_10m: Optional[float] = None
