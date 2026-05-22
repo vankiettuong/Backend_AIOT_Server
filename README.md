@@ -52,7 +52,10 @@ uvicorn run:app --host 0.0.0.0 --port 8000 --reload
 
 ## ML recommendation flow
 
-- ML service posts recommendation to `POST /ml/recommendations`
+- Backend receives sensor telemetry from MQTT and exposes latest telemetry and
+  training datasets over HTTP for the ML service.
+- ML service polls new telemetry from backend, runs inference, then posts
+  recommendation to `POST /ml/recommendations`.
 - Backend stores it in `ml_recommendations`
 - Backend publishes MQTT to topic template: `devices/{device_id}/ml-setpoint`
 
